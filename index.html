@@ -1,13 +1,258 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Schopen – Produkt-Feed-App</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PROTOTYPE • TikTok-Style Infinite Product Feed</title>
+  <!-- Reliability: preconnect for image CDN -->
+  <link rel="preconnect" href="https://images.unsplash.com" crossorigin>
+  <link rel="dns-prefetch" href="//images.unsplash.com">
+  <style>
+    :root {
+      --bg:#0f0f10; --card:#141416; --text:#eaeaea; --muted:#9aa0a6; --accent:#10b981; --danger:#ef4444; --proto:#f59e0b;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    header{position:sticky; top:0; z-index:10; backdrop-filter:saturate(180%) blur(8px); background:linear-gradient(180deg, rgba(20,20,22,.95), rgba(20,20,22,.6)); border-bottom:1px solid #222; display:flex; align-items:center; gap:.75rem; padding:.8rem 1rem}
+    header .logo{font-weight:800; letter-spacing:.2px}
+    header .badge{margin-left:auto; font-size:.8rem; color:var(--muted)}
+    header .proto-tag{margin-left:.5rem; font-weight:800; color:var(--proto)}
+
+    #feed{max-width:720px; margin:0 auto; padding:0 0 6rem}
+
+    .card{position:relative; margin:12px; border-radius:18px; overflow:hidden; background:var(--card); box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .media{aspect-ratio:9/16; width:100%; display:block; object-fit:cover; background:#0b0b0c}
+
+    .overlay{position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:space-between; pointer-events:none; padding:14px; background:linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.35) 72%, rgba(0,0,0,.6) 96%)}
+    .meta{pointer-events:auto}
+    .title{font-weight:800; font-size:1rem; margin:0 0 2px}
+    .subtitle{margin:0; font-size:.9rem; color:var(--muted)}
+
+    .actions{display:flex; flex-direction:column; gap:10px; align-items:flex-end; pointer-events:auto}
+    .btn{border:none; border-radius:999px; padding:10px 14px; cursor:pointer; font-weight:800; display:inline-flex; align-items:center; gap:8px}
+    .btn.like{background:#222; color:#fff}
+    .btn.like.liked{background:var(--danger)}
+    .btn.shop{background:var(--accent); color:#05130f; text-decoration:none}
+    .count{opacity:.9}
+
+    .shimmer{position:absolute; inset:0; background:linear-gradient(110deg, rgba(255,255,255,0) 20%, rgba(255,255,255,.06) 45%, rgba(255,255,255,0) 70%); background-size:200% 100%; animation:shimmer 1.6s infinite}
+    @keyframes shimmer{0%{background-position:200% 0} 100%{background-position:-200% 0}}
+
+    .sentinel{height:1px}
+
+    .ribbon{position:absolute; top:12px; left:-42px; transform:rotate(-35deg); background:rgba(245,158,11,.9); color:#111; font-weight:900; letter-spacing:.5px; padding:6px 56px; box-shadow:0 8px 24px rgba(0,0,0,.35); text-transform:uppercase; font-size:.75rem; pointer-events:none}
+
+    @media(min-width:820px){body{background:radial-gradient(80% 60% at 50% -10%, #1a1b1f 0%, #0f0f10 60%)} #feed{padding-top:8px}}
+  </style>
 </head>
 <body>
-  <h1>Schopen</h1>
-  <p>Ich entwickle eine mobile App mit einem TikTok-ähnlichen Feed,
-     in dem Nutzer Produkte aus verschiedenen Online-Shops entdecken können.</p>
-  <p>Die App befindet sich derzeit in Entwicklung. Bald mehr!</p>
+  <header>
+    <div class="logo">🚀 PROTOTYPE • Infinite Product Feed</div>
+    <div class="proto-tag">PROTOTYPE</div>
+    <div class="badge">HTML • Vanilla JS • Single File • PROTOTYPE</div>
+  </header>
+
+  <main id="feed" aria-live="polite" aria-busy="false"></main>
+  <div id="sentinel" class="sentinel" aria-hidden="true"></div>
+
+  <template id="card-template">
+    <article class="card" data-id="">
+      <div class="ribbon">PROTOTYPE</div>
+      <img class="media" loading="lazy" alt="Prototype product image" src="" />
+      <div class="shimmer" aria-hidden="true"></div>
+      <div class="overlay">
+        <div class="meta">
+          <h3 class="title"></h3>
+          <p class="subtitle"></p>
+        </div>
+        <div class="actions">
+          <button class="btn like" type="button" aria-pressed="false" title="Prototype Like">
+            <span class="heart">❤</span>
+            <span class="count">0</span>
+          </button>
+          <a class="btn shop" href="#" target="_blank" rel="noopener" title="Prototype Shop">Prototype Shop</a>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script>
+    // --- PROTOTYPE Reliability Loader ---
+    const BATCH_SIZE = 8;
+    const MAX_ITEMS = 200; // safety limit (PROTOTYPE)
+    const CONCURRENCY = 4; // limit simultaneous image loads
+    const LOAD_TIMEOUT_MS = 8000; // per attempt
+    const RETRIES = 3;
+
+    // Smaller images (faster & more reliable for mobile) ~ 480x853 (9:16)
+    const PRODUCT_IMAGES = [
+      'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=480&h=853&fit=crop&auto=format&q=70', // sneakers
+      'https://images.unsplash.com/photo-1510433204899-3d2f8b31a8be?w=480&h=853&fit=crop&auto=format&q=70', // watch
+      'https://images.unsplash.com/photo-1511385348-a52b4a160dc2?w=480&h=853&fit=crop&auto=format&q=70', // headphones
+      'https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?w=480&h=853&fit=crop&auto=format&q=70', // skincare
+      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=480&h=853&fit=crop&auto=format&q=70', // shoes close
+      'https://images.unsplash.com/photo-1522312346375-d1a52e2b99b3?w=480&h=853&fit=crop&auto=format&q=70', // camera
+      'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=480&h=853&fit=crop&auto=format&q=70', // laptop
+      'https://images.unsplash.com/photo-1491553895911-0055eca6402d?w=480&h=853&fit=crop&auto=format&q=70', // hoodie
+      'https://images.unsplash.com/photo-1511988617509-a57c8a288659?w=480&h=853&fit=crop&auto=format&q=70', // perfume
+      'https://images.unsplash.com/photo-1516382799247-87df94b99a83?w=480&h=853&fit=crop&auto=format&q=70', // backpack
+      'https://images.unsplash.com/photo-1519741497674-611481863552?w=480&h=853&fit=crop&auto=format&q=70'  // sunglasses
+    ];
+
+    // Embedded fallback (SVG data URL) – always available
+    const FALLBACK = 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22480%22 height=%22853%22 viewBox=%220 0 480 853%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%22 y1=%220%22 x2=%221%22 y2=%221%22%3E%3Cstop stop-color=%22%231a1b1f%22/%3E%3Cstop offset=%221%22 stop-color=%22%230f0f10%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill=%22url(%23g)%22 width=%22480%22 height=%22853%22/%3E%3Ctext x=%2224%22 y=%2244%22 font-family=%22system-ui,Segoe UI,Arial%22 font-size=%2230%22 fill=%22%23f59e0b%22 font-weight=%22800%22%3EPROTOTYPE%3C/text%3E%3C/svg%3E';
+
+    const feed = document.getElementById('feed');
+    const sentinel = document.getElementById('sentinel');
+    const tpl = document.getElementById('card-template');
+
+    const likeKey = (id) => `prototype_feed_like_${id}`;
+    const getLiked = (id) => localStorage.getItem(likeKey(id)) === '1';
+    const setLiked = (id, v) => localStorage.setItem(likeKey(id), v ? '1' : '0');
+
+    let loaded = 0;
+    let busy = false;
+
+    function pickImage(i){
+      return PRODUCT_IMAGES[i % PRODUCT_IMAGES.length];
+    }
+
+    function waitFor(img){
+      return new Promise((resolve, reject)=>{
+        const onLoad = ()=>{ cleanup(); resolve(); };
+        const onErr = ()=>{ cleanup(); reject(new Error('img error')); };
+        const cleanup = ()=>{ img.removeEventListener('load', onLoad); img.removeEventListener('error', onErr); };
+        img.addEventListener('load', onLoad, {once:true});
+        img.addEventListener('error', onErr, {once:true});
+        if(img.complete && img.naturalWidth>0){ cleanup(); resolve(); }
+      });
+    }
+
+    async function loadImageWithRetry(imgEl, url){
+      for(let attempt=1; attempt<=RETRIES; attempt++){
+        const cacheBust = (attempt>1) ? (url + (url.includes('?')?'&':'?') + 't=' + Date.now()) : url;
+        imgEl.src = cacheBust;
+        try{
+          await Promise.race([
+            waitFor(imgEl),
+            new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), LOAD_TIMEOUT_MS))
+          ]);
+          return true; // loaded
+        }catch(e){
+          // try next attempt
+        }
+      }
+      imgEl.src = FALLBACK; // final fallback
+      return false;
+    }
+
+    // Queue to limit concurrent image loads
+    const queue = [];
+    let active = 0;
+    function enqueue(task){
+      queue.push(task); pump();
+    }
+    function pump(){
+      while(active < CONCURRENCY && queue.length){
+        const t = queue.shift(); active++;
+        t().finally(()=>{ active--; pump(); });
+      }
+    }
+
+    function createCard(item){
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      node.dataset.id = item.id;
+      const img = node.querySelector('.media');
+      const shimmer = node.querySelector('.shimmer');
+      node.querySelector('.title').textContent = `PROTOTYPE • ${item.title}`;
+      node.querySelector('.subtitle').textContent = `PROTOTYPE • ${item.subtitle}`;
+
+      const likeBtn = node.querySelector('.like');
+      const countEl = likeBtn.querySelector('.count');
+      const initiallyLiked = getLiked(item.id);
+      likeBtn.classList.toggle('liked', initiallyLiked);
+      likeBtn.setAttribute('aria-pressed', initiallyLiked ? 'true' : 'false');
+      let count = initiallyLiked ? item.likes + 1 : item.likes;
+      countEl.textContent = count;
+      likeBtn.addEventListener('click', () => {
+        const now = !likeBtn.classList.contains('liked');
+        likeBtn.classList.toggle('liked', now);
+        likeBtn.setAttribute('aria-pressed', now ? 'true' : 'false');
+        setLiked(item.id, now);
+        count += now ? 1 : -1; 
+        countEl.textContent = count;
+      });
+
+      // Lazy-load via IntersectionObserver + retry with fallback
+      img.dataset.src = item.img; // store target URL
+      const io = new IntersectionObserver(async (entries, obs)=>{
+        for(const entry of entries){
+          if(entry.isIntersecting){
+            obs.unobserve(img);
+            enqueue(async ()=>{
+              try{ await loadImageWithRetry(img, img.dataset.src); }
+              finally{ shimmer && shimmer.remove(); }
+            });
+          }
+        }
+      }, {rootMargin:'600px'});
+      io.observe(img);
+
+      // Also set a temporary fallback immediately (so nothing looks broken before load)
+      img.src = FALLBACK;
+
+      const shop = node.querySelector('.shop');
+      shop.href = item.shop;
+      shop.textContent = 'Prototype Shop';
+
+      return node;
+    }
+
+    function makeItem(i){
+      const id = i.toString(36);
+      const title = `Product #${i}`;
+      const subtitle = `CHF ${(10 + (i % 90)).toFixed(2)}`;
+      return {
+        id,
+        title,
+        subtitle,
+        img: pickImage(i),
+        likes: Math.floor(Math.random()*200),
+        shop: `https://example.com/product/${id}` // PROTOTYPE link
+      };
+    }
+
+    function loadBatch(){
+      if(busy) return; busy = true; feed.setAttribute('aria-busy','true');
+      const frag = document.createDocumentFragment();
+      for(let i=0; i<BATCH_SIZE && loaded<MAX_ITEMS; i++){
+        const idx = loaded + 1;
+        const item = makeItem(idx);
+        frag.appendChild(createCard(item));
+        loaded++;
+      }
+      feed.appendChild(frag);
+      feed.setAttribute('aria-busy','false'); busy = false;
+    }
+
+    // Infinite Scroll sentinel
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(entry => { if(entry.isIntersecting) loadBatch(); });
+    }, {rootMargin: '1200px'});
+    io.observe(sentinel);
+    loadBatch(); // initial (PROTOTYPE)
+
+    // Pull-to-refresh (mobile): soft refresh of images (retries)
+    let touchStartY = 0;
+    window.addEventListener('touchstart', (e)=>{ touchStartY = e.touches[0].clientY; }, {passive:true});
+    window.addEventListener('touchend', ()=>{
+      if(window.scrollY===0 && touchStartY<50){
+        document.querySelectorAll('.card .media').forEach((img)=>{
+          const url = img.dataset && img.dataset.src; if(!url) return;
+          enqueue(async ()=>{ await loadImageWithRetry(img, url); });
+        });
+      }
+    }, {passive:true});
+  </script>
 </body>
 </html>
