@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AWIN • TikTok-Style Product Feed</title>
+
+  <style>
+    :root {
+      --bg:#0f0f10;
+      --card:#141416;
+      --text:#eaeaea;
+      --muted:#9aa0a6;
+      --accent:#10b981;
+      --danger:#ef4444;
+      --secondary:#374151;
+    }
+
+    *{box-sizing:border-box;}
+    html,body{
+      height:100%;
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      user-select:none;
+      -webkit-user-select:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+
+    header{
+      position:sticky;
+      top:0;
+      z-index:10;
+      backdrop-filter:saturate(180%) blur(8px);
+      background:linear-gradient(180deg, rgba(20,20,22,.95), rgba(20,20,22,.6));
+      border-bottom:1px solid #222;
+      display:flex;
+      align-items:center;
+      gap:.75rem;
+      padding:.8rem 1rem;
+    }
+
+    header .logo{
+      font-weight:800;
+      letter-spacing:.2px;
+      font-size:1rem;
+    }
+
+    header .badge{
+      margin-left:auto;
+      font-size:.8rem;
+      color:var(--muted);
+      text-align:right;
+    }
+
+    #feed{
+      max-width:720px;
+      margin:0 auto;
+      padding:0 0 3rem;
+    }
+
+    .card{
+      position:relative;
+      margin:8px 12px 12px;
+      border-radius:18px;
+      overflow:hidden;
+      background:var(--card);
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+      min-height:calc(100vh - 80px);
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-start;
+    }
+
+    /* --- Galerie im Post (Pfeile & Swipe) --- */
+
+    .gallery{
+      position:relative;
+      width:100%;
+      background:#000;
+      overflow:hidden;
+    }
+
+    .gallery-track{
+      display:flex;
+      width:100%;
+      transition:transform .25s ease-out;
+    }
+
+    .gallery-image{
+      flex:0 0 100%;
+      width:100%;
+      aspect-ratio:9/16;
+      object-fit:contain;
+      object-position:center;
+      background:#000;
+    }
+
+    .gallery-indicators{
+      position:absolute;
+      bottom:10px;
+      left:50%;
+      transform:translateX(-50%);
+      display:flex;
+      gap:4px;
+      z-index:3;
+      pointer-events:none;
+    }
+    .gallery-dot{
+      width:7px;
+      height:7px;
+      border-radius:999px;
+      background:rgba(255,255,255,.3);
+    }
+    .gallery-dot.active{
+      background:#fff;
+    }
+
+    .gallery-arrow{
+      position:absolute;
+      top:50%;
+      transform:translateY(-50%);
+      width:34px;
+      height:34px;
+      border-radius:999px;
+      border:none;
+      background:rgba(0,0,0,.55);
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      z-index:4;
+      font-size:1.2rem;
+      box-shadow:0 4px 12px rgba(0,0,0,.45);
+    }
+    .gallery-arrow.left{ left:8px; }
+    .gallery-arrow.right{ right:8px; }
+
+    .gallery-arrow:hover{
+      transform:translateY(-50%) scale(1.05);
+    }
+
+    /* --- Overlay: Desktop-Version (auf dem Bild) --- */
+
+    .overlay{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      pointer-events:none;
+      padding:14px;
+      background:linear-gradient(
+        180deg,
+        rgba(0,0,0,0) 55%,
+        rgba(0,0,0,.35) 72%,
+        rgba(0,0,0,.6) 96%
+      );
+    }
+
+    .meta{
+      pointer-events:auto;
+      max-width:62%;
+      margin-bottom:10px;
+    }
+    .title{
+      font-weight:800;
+      font-size:1rem;
+      margin:0 0 4px;
+    }
+    .subtitle{
+      margin:0 0 2px;
+      font-size:.9rem;
+      color:var(--muted);
+    }
+    .desc{
+      margin:0;
+      font-size:.85rem;
+      color:var(--text);
+      opacity:.9;
+      max-height:5.2em;
+      overflow:hidden;
+    }
+
+    /* --- TikTok-Style Button-Stack rechts --- */
+
+    .actions{
+      position:absolute;
+      right:10px;
+      bottom:22%;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      align-items:center;
+      pointer-events:auto;
+    }
+
+    .btn{
+      border:none;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:700;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+    }
+
+    .btn-icon{
+      width:52px;
+      height:52px;
+      font-size:1.5rem;
+      background:rgba(0,0,0,.6);
+      color:#fff;
+      box-shadow:0 6px 14px rgba(0,0,0,.45);
+    }
+
+    .btn-icon:hover{
+      transform:translateY(-2px) scale(1.05);
+      box-shadow:0 8px 20px rgba(0,0,0,.55);
+    }
+
+    .btn-like{
+      background:rgba(0,0,0,.6);
+    }
+    .btn-like.liked{
+      background:var(--danger);
+    }
+
+    .btn-save{
+      background:rgba(0,0,0,.6);
+    }
+    .btn-save.saved{
+      background:var(--secondary);
+    }
+
+    .btn-share{
+      background:rgba(0,0,0,.6);
+    }
+
+    .btn.shop{
+      margin-top:6px;
+      padding:10px 18px;
+      font-size:.9rem;
+      background:var(--accent);
+      color:#05130f;
+      text-decoration:none;
+      white-space:nowrap;
+      box-shadow:0 4px 12px rgba(0,0,0,.45);
+    }
+    .btn.shop:hover{
+      transform:translateY(-1px);
+      box-shadow:0 6px 18px rgba(0,0,0,.55);
+    }
+
+    .shimmer{
+      position:absolute;
+      inset:0;
+      background:linear-gradient(
+        110deg,
+        rgba(255,255,255,0) 20%,
+        rgba(255,255,255,.06) 45%,
+        rgba(255,255,255,0) 70%
+      );
+      background-size:200% 100%;
+      animation:shimmer 1.6s infinite;
+      z-index:1;
+    }
+    @keyframes shimmer{
+      0%{background-position:200% 0;}
+      100%{background-position:-200% 0;}
+    }
+
+    .sentinel{height:1px;}
+
+    .ribbon{
+      position:absolute;
+      top:12px;
+      left:-42px;
+      transform:rotate(-35deg);
+      background:rgba(16,185,129,.95);
+      color:#05130f;
+      font-weight:900;
+      letter-spacing:.5px;
+      padding:6px 56px;
+      box-shadow:0 8px 24px rgba(0,0,0,.35);
+      text-transform:uppercase;
+      font-size:.75rem;
+      pointer-events:none;
+      z-index:2;
+    }
+
+    @media(min-width:820px){
+      body{
+        background:radial-gradient(80% 60% at 50% -10%, #1a1b1f 0%, #0f0f10 60%);
+      }
+      #feed{padding-top:8px;}
+    }
+
+    /* ---------- MOBILE VIEW (Layout unter dem Bild) ---------- */
+    @media (max-width: 768px){
+      header{
+        padding:.6rem .8rem;
+      }
+
+      #feed{
+        max-width:none;
+        padding-bottom:2rem;
+      }
+
+      .card{
+        margin:0;
+        border-radius:0;
+        min-height:100vh;
+      }
+
+      /* Overlay wird zu normalem Block UNTER dem Bild */
+      .overlay{
+        position:static;
+        inset:auto;
+        background:var(--card);
+        padding:10px 10px 14px;
+        display:flex;
+        flex-direction:row;
+        align-items:flex-start;
+        justify-content:space-between;
+        pointer-events:auto;
+      }
+
+      .meta{
+        max-width:none;
+        flex:1;
+        margin-bottom:0;
+        padding-right:8px;
+      }
+
+      .title{
+        font-size:.98rem;
+      }
+      .subtitle{
+        font-size:.9rem;
+      }
+
+      /* Beschreibung: nicht mehr abschneiden */
+      .desc{
+        font-size:.86rem;
+        max-height:none;
+        overflow:visible;
+      }
+
+      .actions{
+        position:static;
+        right:auto;
+        bottom:auto;
+        margin-left:4px;
+        gap:8px;
+        align-items:center;
+      }
+
+      .btn-icon{
+        width:46px;
+        height:46px;
+        font-size:1.3rem;
+      }
+
+      .btn.shop{
+        margin-top:8px;
+        align-self:flex-end;
+        padding:9px 16px;
+        font-size:.85rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">🛒 AWIN Infinite Product Stream</div>
+    <div class="badge">
+      TikTok-Style • Snapping • Galerie<br/>
+      datafeed_2643060.csv → products.json
+    </div>
+  </header>
+
+  <main id="feed" aria-live="polite" aria-busy="false"></main>
+  <div id="sentinel" class="sentinel" aria-hidden="true"></div>
+
+  <template id="card-template">
+    <article class="card" data-id="">
+      <div class="ribbon">AWIN</div>
+
+      <div class="gallery">
+        <div class="gallery-track"></div>
+        <div class="gallery-indicators"></div>
+        <button class="gallery-arrow left" type="button" aria-label="Vorheriges Bild">‹</button>
+        <button class="gallery-arrow right" type="button" aria-label="Nächstes Bild">›</button>
+        <div class="shimmer" aria-hidden="true"></div>
+      </div>
+
+      <div class="overlay">
+        <div class="meta">
+          <h3 class="title"></h3>
+          <p class="subtitle"></p>
+          <p class="desc"></p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-icon btn-like" type="button" aria-pressed="false" title="Like">
+            ❤
+          </button>
+          <button class="btn btn-icon btn-save" type="button" aria-pressed="false" title="Merken">
+            🔖
+          </button>
+          <button class="btn btn-icon btn-share" type="button" title="Teilen">
+            ⇪
+          </button>
+          <a class="btn shop" href="#" target="_blank" rel="noopener">
+            Zum Shop
+          </a>
+        </div>
+      </div>
+    </article>
+  </template>
+
+  <script>
+    // ---- Konfiguration ----
+    const PRODUCT_FEED_URL = "products.json";
+    const MAX_RENDER = 200;
+
+    const likeKey  = id => `awin_feed_like_${id}`;
+    const saveKey  = id => `awin_feed_save_${id}`;
+    const getLiked = id => localStorage.getItem(likeKey(id)) === "1";
+    const setLiked = (id, v) => localStorage.setItem(likeKey(id), v ? "1" : "0");
+    const getSaved = id => localStorage.getItem(saveKey(id)) === "1";
+    const setSaved = (id, v) => localStorage.setItem(saveKey(id), v ? "1" : "0");
+
+    const FALLBACK =
+      "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22480%22 height=%22853%22 viewBox=%220 0 480 853%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%22 y1=%220%22 x2=%221%22 y2=%221%22%3E%3Cstop stop-color=%22%231a1b1f%22/%3E%3Cstop offset=%221%22 stop-color=%22%230f0f10%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill=%22url(%23g)%22 width=%22480%22 height=%22853%22/%3E%3Ctext x=%2224%22 y=%2244%22 font-family=%22system-ui,Segoe UI,Arial%22 font-size=%2230%22 fill=%22%2310b981%22 font-weight=%22800%22%3EAWIN%3C/text%3E%3C/svg%3E";
+
+    const feed = document.getElementById("feed");
+    const tpl = document.getElementById("card-template");
+
+    let allProducts = [];
+    let cards = [];
+    let isSnapping = false;
+
+    function formatPriceCHF(priceRaw) {
+      if (!priceRaw) return "";
+      let p = String(priceRaw).trim();
+      if (!/CHF/i.test(p)) p = "CHF " + p;
+      return p;
+    }
+
+    function dedupeAndShuffle(list) {
+      const seen = new Set();
+      const filtered = [];
+      for (const item of list) {
+        const title = (item.title || item.product_name || "").trim();
+        const img =
+          (item.image ||
+           item.merchant_image_url ||
+           item.aw_image_url ||
+           item.image_url ||
+           "").trim();
+        if (!title || !img) continue;
+        const key = title + "|" + img;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        filtered.push({ ...item, title, image: img });
+      }
+      for (let i = filtered.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
+      }
+      return filtered;
+    }
+
+    async function loadAllProductsOnce() {
+      if (allProducts.length) return allProducts;
+      feed.setAttribute("aria-busy", "true");
+      try {
+        const res = await fetch(PRODUCT_FEED_URL, { cache: "no-store" });
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error("products.json muss ein Array sein");
+
+        const prepared = dedupeAndShuffle(data).map((item, idx) => {
+          const rawPrice = item.price || item.search_price || item.store_price || "";
+          const price = formatPriceCHF(rawPrice);
+          const merchant = item.merchant || item.merchant_name || "";
+          const subtitle = [price, merchant].filter(Boolean).join(" • ");
+
+          let image =
+            item.image ||
+            item.merchant_image_url ||
+            item.aw_image_url ||
+            item.image_url ||
+            "";
+
+          let images = [];
+          if (Array.isArray(item.images) && item.images.length > 0) {
+            images = item.images.filter(Boolean);
+            if (!image && images.length) image = images[0];
+          } else {
+            images = image ? [image] : [];
+          }
+
+          return {
+            ...item,
+            id: item.id || item.aw_product_id || item.merchant_product_id || String(idx),
+            title: item.title || item.product_name || "Ohne Titel",
+            image,
+            images,
+            price,
+            merchant,
+            subtitle,
+            description: item.description || "",
+            deeplink: item.deeplink || item.aw_deep_link || ""
+          };
+        });
+
+        allProducts = prepared;
+      } catch (e) {
+        console.error(e);
+      } finally {
+        feed.setAttribute("aria-busy", "false");
+      }
+      return allProducts;
+    }
+
+    function setupGallery(track, indicators, leftArrow, rightArrow, images) {
+      if (!images || !images.length) {
+        images = [FALLBACK];
+      }
+
+      const hasMultiple = images.length > 1;
+
+      leftArrow.style.display  = hasMultiple ? "flex" : "none";
+      rightArrow.style.display = hasMultiple ? "flex" : "none";
+
+      images.forEach((src, idx) => {
+        const img = document.createElement("img");
+        img.className = "gallery-image";
+        img.loading = "lazy";
+        img.src = src || FALLBACK;
+        img.alt = "";
+        img.addEventListener("error", () => { img.src = FALLBACK; });
+        track.appendChild(img);
+
+        if (hasMultiple) {
+          const dot = document.createElement("span");
+          dot.className = "gallery-dot" + (idx === 0 ? " active" : "");
+          indicators.appendChild(dot);
+        }
+      });
+
+      const dots = Array.from(indicators.children);
+      let currentIndex = 0;
+
+      function setIndex(idx) {
+        if (!images.length) return;
+        idx = Math.min(Math.max(idx, 0), images.length - 1);
+        currentIndex = idx;
+        track.style.transform = `translateX(-${idx * 100}%)`;
+        dots.forEach((d, i) => d.classList.toggle("active", i === idx));
+      }
+
+      setIndex(0);
+
+      if (hasMultiple) {
+        leftArrow.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setIndex(currentIndex - 1);
+        });
+
+        rightArrow.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setIndex(currentIndex + 1);
+        });
+
+        track.addEventListener("dblclick", (e) => {
+          e.stopPropagation();
+          setIndex(currentIndex + 1);
+        });
+
+        // Touch-Swipe auf Mobile
+        let touchStartX = null;
+
+        track.addEventListener("touchstart", (e) => {
+          if (e.touches.length !== 1) return;
+          touchStartX = e.touches[0].clientX;
+        }, { passive:true });
+
+        track.addEventListener("touchend", (e) => {
+          if (touchStartX == null) return;
+          const endX = (e.changedTouches && e.changedTouches[0].clientX) || touchStartX;
+          const deltaX = endX - touchStartX;
+          touchStartX = null;
+          if (Math.abs(deltaX) < 40) return;
+          if (deltaX < 0) {
+            setIndex(currentIndex + 1);
+          } else {
+            setIndex(currentIndex - 1);
+          }
+        }, { passive:true });
+      }
+    }
+
+    function shareProduct(item) {
+      const url = item.deeplink || window.location.href;
+      const text = item.title || "Produkt";
+      if (navigator.share) {
+        navigator.share({ title: text, text, url }).catch(() => {});
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          alert("Link kopiert ✅");
+        }).catch(() => {
+          alert("Link: " + url);
+        });
+      } else {
+        alert("Link: " + url);
+      }
+    }
+
+    function createCard(item) {
+      const node = tpl.content.firstElementChild.cloneNode(true);
+      const id = item.id;
+      node.dataset.id = id;
+
+      const track      = node.querySelector(".gallery-track");
+      const indicators = node.querySelector(".gallery-indicators");
+      const leftArrow  = node.querySelector(".gallery-arrow.left");
+      const rightArrow = node.querySelector(".gallery-arrow.right");
+      const shimmer    = node.querySelector(".shimmer");
+
+      setupGallery(track, indicators, leftArrow, rightArrow, item.images || []);
+
+      const firstImg = track.querySelector("img");
+      if (firstImg) {
+        if (firstImg.complete) {
+          shimmer && shimmer.remove();
+        } else {
+          firstImg.addEventListener("load", () => shimmer && shimmer.remove(), { once:true });
+          firstImg.addEventListener("error", () => shimmer && shimmer.remove(), { once:true });
+        }
+      } else {
+        shimmer && shimmer.remove();
+      }
+
+      const titleEl    = node.querySelector(".title");
+      const subtitleEl = node.querySelector(".subtitle");
+      const descEl     = node.querySelector(".desc");
+      const likeBtn    = node.querySelector(".btn-like");
+      const saveBtn    = node.querySelector(".btn-save");
+      const shareBtn   = node.querySelector(".btn-share");
+      const shopLink   = node.querySelector(".shop");
+
+      titleEl.textContent = item.title || "Ohne Titel";
+      subtitleEl.textContent =
+        item.subtitle || [item.price, item.merchant].filter(Boolean).join(" • ");
+
+      const rawDesc = (item.description || "").replace(/\s+/g, " ").trim();
+      if (rawDesc) {
+        descEl.textContent = rawDesc.length > 220 ? rawDesc.slice(0,217) + "…" : rawDesc;
+      } else {
+        descEl.textContent = "";
+      }
+
+      const liked = getLiked(id);
+      likeBtn.classList.toggle("liked", liked);
+      likeBtn.setAttribute("aria-pressed", liked ? "true" : "false");
+      likeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const now = !likeBtn.classList.contains("liked");
+        likeBtn.classList.toggle("liked", now);
+        likeBtn.setAttribute("aria-pressed", now ? "true" : "false");
+        setLiked(id, now);
+      });
+
+      const saved = getSaved(id);
+      saveBtn.classList.toggle("saved", saved);
+      saveBtn.setAttribute("aria-pressed", saved ? "true" : "false");
+      saveBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const now = !saveBtn.classList.contains("saved");
+        saveBtn.classList.toggle("saved", now);
+        saveBtn.setAttribute("aria-pressed", now ? "true" : "false");
+        setSaved(id, now);
+      });
+
+      shareBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        shareProduct(item);
+      });
+
+      if (item.deeplink) {
+        shopLink.href = item.deeplink;
+      } else {
+        shopLink.href = "#";
+        shopLink.target = "_self";
+      }
+      shopLink.addEventListener("click", (e) => {
+        e.stopPropagation();
+      });
+
+      return node;
+    }
+
+    function updateCardsList() {
+      cards = Array.from(document.querySelectorAll(".card"));
+    }
+
+    function getClosestCardIndex() {
+      if (!cards.length) return 0;
+      const scrollY = window.scrollY;
+      const center = scrollY + window.innerHeight / 2;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      cards.forEach((card, idx) => {
+        const rect = card.getBoundingClientRect();
+        const cardCenter = scrollY + rect.top + rect.height / 2;
+        const d = Math.abs(cardCenter - center);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = idx;
+        }
+      });
+      return bestIdx;
+    }
+
+    function snapToCard(targetIdx) {
+      if (!cards.length) return;
+      targetIdx = Math.min(Math.max(targetIdx, 0), cards.length - 1);
+      const card = cards[targetIdx];
+      if (!card) return;
+      const header = document.querySelector("header");
+      const headerH = header ? header.offsetHeight : 0;
+      const rect = card.getBoundingClientRect();
+      const targetY = window.scrollY + rect.top - 8 - headerH;
+
+      isSnapping = true;
+      window.scrollTo({ top: targetY, behavior: "smooth" });
+      setTimeout(() => { isSnapping = false; }, 420);
+    }
+
+    async function initFeed() {
+      const data = await loadAllProductsOnce();
+      const slice = data.slice(0, MAX_RENDER);
+
+      const frag = document.createDocumentFragment();
+      for (const item of slice) {
+        frag.appendChild(createCard(item));
+      }
+      feed.appendChild(frag);
+      updateCardsList();
+
+      snapToCard(0);
+    }
+
+    // Mausrad → ein Card hoch/runter (Desktop)
+    window.addEventListener("wheel", (e) => {
+      if (!cards.length) return;
+      e.preventDefault();
+      if (isSnapping) return;
+
+      const delta = e.deltaY;
+      if (Math.abs(delta) < 5) return;
+
+      const direction = delta > 0 ? 1 : -1;
+      const currentIdx = getClosestCardIndex();
+      const targetIdx = currentIdx + direction;
+      snapToCard(targetIdx);
+    }, { passive:false });
+
+    initFeed();
+  </script>
+</body>
+</html>
